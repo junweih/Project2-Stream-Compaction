@@ -6,6 +6,11 @@
 #include <string>
 #include <ctime>
 
+// ANSI color codes
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 template<typename T>
 int cmpArrays(int n, T *a, T *b) {
     for (int i = 0; i < n; i++) {
@@ -22,19 +27,30 @@ void printDesc(const char *desc) {
 }
 
 template<typename T>
-void printCmpResult(int n, T *a, T *b) {
-    printf("    %s \n",
-            cmpArrays(n, a, b) ? "FAIL VALUE" : "passed");
+void printCmpResult(int n, T* a, T* b) {
+    if (cmpArrays(n, a, b)) {
+        std::cout << "    " << ANSI_COLOR_RED << "FAIL VALUE" << ANSI_COLOR_RESET << std::endl;
+    }
+    else {
+        std::cout << "    " << ANSI_COLOR_GREEN << "passed" << ANSI_COLOR_RESET << std::endl;
+    }
 }
 
 template<typename T>
-void printCmpLenResult(int n, int expN, T *a, T *b) {
+void printCmpLenResult(int n, int expN, T* a, T* b) {
     if (n != expN) {
-        printf("    expected %d elements, got %d\n", expN, n);
+        std::cout << "    expected " << expN << " elements, got " << n << std::endl;
     }
-    printf("    %s \n",
-            (n == -1 || n != expN) ? "FAIL COUNT" :
-            cmpArrays(n, a, b) ? "FAIL VALUE" : "passed");
+
+    if (n == -1 || n != expN) {
+        std::cout << "    " << ANSI_COLOR_RED << "FAIL COUNT" << ANSI_COLOR_RESET << std::endl;
+    }
+    else if (cmpArrays(n, a, b)) {
+        std::cout << "    " << ANSI_COLOR_RED << "FAIL VALUE" << ANSI_COLOR_RESET << std::endl;
+    }
+    else {
+        std::cout << "    " << ANSI_COLOR_GREEN << "passed" << ANSI_COLOR_RESET << std::endl;
+    }
 }
 
 void zeroArray(int n, int *a) {
