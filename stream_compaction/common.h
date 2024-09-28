@@ -15,6 +15,7 @@
 
 #define blockSize 256
 #define OPTIMIZE 1
+#define RADIX 2
 
 /**
  * Check for CUDA errors; print and exit if there was a problem.
