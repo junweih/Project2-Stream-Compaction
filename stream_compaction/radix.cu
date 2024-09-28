@@ -1,6 +1,9 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include "common.h"
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/scan.h>
 #include "radix.h"
 
 namespace StreamCompaction {
@@ -14,144 +17,105 @@ namespace StreamCompaction {
             return timer;
         }
 
-        __device__ inline int findMSB(int n) {
-            return 31 - __clz(n);
+        __global__ void kernalCheckStop(int n, const int* idata, int* stop)
+        {
+            int index = threadIdx.x + (blockDim.x * blockIdx.x);
+            if (index >= n - 1) return;
+
+            if (idata[index] > idata[index + 1]) (*stop) = 1;
         }
 
-        __global__ void calculateMaxBit(int* d_input, int* d_max_bit, int n) {
-            int tid = threadIdx.x + blockIdx.x * blockDim.x;
-            int stride = blockDim.x * gridDim.x;
+        __global__ void kernalRadixMapToBoolean(int n, int k, int* label, const int* idata, int* skip) {
+            int index = threadIdx.x + (blockDim.x * blockIdx.x);
+            if (index >= n) return;
 
-            __shared__ int shared_max_bit;
-            if (threadIdx.x == 0) {
-                shared_max_bit = 0;
+            int num = idata[index];
+            int result = 1 - ((num & (1 << k)) >> k);
+            if (k == 0 || result != ((num & (1 << (k - 1))) != 0 ? 0 : 1))
+            {
+                *skip = 1;
             }
-            __syncthreads();
-
-            for (int i = tid; i < n; i += stride) {
-                int local_max_bit = findMSB(d_input[i]);
-                atomicMax(&shared_max_bit, local_max_bit);
-            }
-
-            __syncthreads();
-
-            if (threadIdx.x == 0) {
-                atomicMax(d_max_bit, shared_max_bit);
-            }
+            label[index] = result;
         }
+        __global__ void kernalRadixScattering(int n, int k, int start, int* odata, const int* idata, const int* label)
+        {
+            int index = threadIdx.x + (blockDim.x * blockIdx.x);
+            if (index >= n) return;
 
-        __global__ void computeHistogram(int* d_input, int* d_histogram, int n, int bit) {
-            int tid = threadIdx.x + blockIdx.x * blockDim.x;
-            int stride = blockDim.x * gridDim.x;
-
-            __shared__ int local_histogram[RADIX];
-            if (threadIdx.x < RADIX) {
-                local_histogram[threadIdx.x] = 0;
+            bool result = ((idata[index] & (1 << k)) != 0 ? 1 : 0);
+            if (result)
+            {
+                odata[start + index - label[index]] = idata[index];
             }
-            __syncthreads();
-
-            for (int i = tid; i < n; i += stride) {
-                int bin = (d_input[i] >> bit) & 1;
-                atomicAdd(&local_histogram[bin], 1);
-            }
-
-            __syncthreads();
-
-            if (threadIdx.x < RADIX) {
-                atomicAdd(&d_histogram[threadIdx.x], local_histogram[threadIdx.x]);
+            else
+            {
+                odata[label[index]] = idata[index];
             }
         }
 
-        __global__ void scan(int* d_histogram, int* d_scanned_histogram) {
-            __shared__ int temp[RADIX];
+         void sort(int n, int* odata, int* idata) {
+             int pot_length = n;// power-of-two length;
 
-            int tid = threadIdx.x;
-            temp[tid] = (tid > 0) ? d_histogram[tid - 1] : 0;
-            __syncthreads();
+             int* dev_read;
+             int* dev_write;
+             int* dev_label;
+             int* dev_number;
 
-            for (int stride = 1; stride < RADIX; stride *= 2) {
-                int index = (tid + 1) * 2 * stride - 1;
-                if (index < RADIX) {
-                    temp[index] += temp[index - stride];
-                }
-                __syncthreads();
-            }
+             cudaMalloc((void**)&dev_read, pot_length * sizeof(int));
+             checkCUDAError("cudaMalloc dev_read failed!");
+             cudaMalloc((void**)&dev_write, pot_length * sizeof(int));
+             checkCUDAError("cudaMalloc dev_write failed!");
+             cudaMalloc((void**)&dev_label, pot_length * sizeof(int));
+             checkCUDAError("cudaMalloc dev_label failed!");
+             cudaMalloc((void**)&dev_number, sizeof(int));
+             checkCUDAError("cudaMalloc dev_number failed!");
 
-            for (int stride = RADIX / 4; stride > 0; stride /= 2) {
-                __syncthreads();
-                int index = (tid + 1) * 2 * stride - 1;
-                if ((index + stride) < RADIX) {
-                    temp[index + stride] += temp[index];
-                }
-            }
+             cudaMemset(dev_read, (1 << 8) - 1, pot_length * sizeof(int));
+             cudaMemcpy(dev_read, idata, n * sizeof(int), cudaMemcpyHostToDevice);
+             checkCUDAError("Memcpy idata(host) to dev_read(device) failed!");
+             timer().startGpuTimer();
+             for (int i = 0; i < 32; ++i)
+             {
+                 // check whether to stop
+                 cudaMemset(dev_number, 0, sizeof(int));
+                 kernalCheckStop << < (pot_length + blockSize - 1) / blockSize, blockSize >> > (pot_length, dev_read, dev_number);
+                 int stop;
+                 cudaMemcpy(&stop, dev_number, sizeof(int), cudaMemcpyDeviceToHost);
+                 if (stop == 0) break;
 
-            __syncthreads();
-            d_scanned_histogram[tid] = temp[tid];
-        }
+                 // label and check whether to skip this bit
+                 cudaMemset(dev_number, 0, sizeof(int));
+                 kernalRadixMapToBoolean << < (pot_length + blockSize - 1) / blockSize, blockSize >> > (pot_length, i, dev_label, dev_read, dev_number);
+                 checkCUDAError("Luanch kernalRadixMapToBoolean failed!");
 
-        __global__ void reorder(int* d_input, int* d_output, int* d_scanned_histogram, int n, int bit) {
-            int tid = threadIdx.x + blockIdx.x * blockDim.x;
-            int stride = blockDim.x * gridDim.x;
+                 int skip;
+                 cudaMemcpy(&skip, dev_number, sizeof(int), cudaMemcpyDeviceToHost);
+                 if (skip == 0) continue;
 
-            for (int i = tid; i < n; i += stride) {
-                int bin = (d_input[i] >> bit) & 1;
-                int pos = atomicAdd(&d_scanned_histogram[bin], 1);
-                d_output[pos] = d_input[i];
-            }
-        }
+                 // read the last number of label_1 back
+                 int last_num;
+                 cudaMemcpy(&last_num, dev_label + pot_length - 1, sizeof(int), cudaMemcpyDeviceToHost);
 
-        void sort(int n, int* odata, int* idata) {
-            timer().startGpuTimer();
+                 //Efficient::EfficientParallelScan(pot_length, dev_label);
+                 thrust::device_ptr<int> thrust_dev_label(dev_label);
+                 thrust::exclusive_scan(thrust_dev_label, thrust_dev_label + pot_length, dev_label);
 
-            // Allocate device memory
-            int* d_input, * d_output, * d_histogram, * d_scanned_histogram, * d_max_bit;
-            cudaMalloc((void**)&d_input, n * sizeof(int));
-            cudaMalloc((void**)&d_output, n * sizeof(int));
-            cudaMalloc((void**)&d_histogram, RADIX * sizeof(int));
-            cudaMalloc((void**)&d_scanned_histogram, RADIX * sizeof(int));
-            cudaMalloc((void**)&d_max_bit, sizeof(int));
+                 int start_index;
+                 cudaMemcpy(&start_index, dev_label + pot_length - 1, sizeof(int), cudaMemcpyDeviceToHost);
+                 start_index += last_num;
 
-            // Copy input data to device
-            cudaMemcpy(d_input, idata, n * sizeof(int), cudaMemcpyHostToDevice);
+                 kernalRadixScattering << < (pot_length + blockSize - 1) / blockSize, blockSize >> > (pot_length, i, start_index, dev_write, dev_read, dev_label);
+                 checkCUDAError("Luanch kernalRadixMapToBoolean failed!");
 
-            // Calculate max bit
-            int gridSize = (n + blockSize - 1) / blockSize;
-            cudaMemset(d_max_bit, 0, sizeof(int));
-            calculateMaxBit << <gridSize, blockSize >> > (d_input, d_max_bit, n);
+                 std::swap(dev_write, dev_read);
+             }
+             timer().endGpuTimer();
+             cudaMemcpy(odata, dev_read, n * sizeof(int), cudaMemcpyDeviceToHost);
 
-            int h_max_bit;
-            cudaMemcpy(&h_max_bit, d_max_bit, sizeof(int), cudaMemcpyDeviceToHost);
-            h_max_bit++; // Add 1 because we count from 0
-
-            // Main radix sort loop
-            for (int bit = 0; bit < h_max_bit; ++bit) {
-                // Compute histogram
-                cudaMemset(d_histogram, 0, RADIX * sizeof(int));
-                computeHistogram << <gridSize, blockSize >> > (d_input, d_histogram, n, bit);
-
-                // Scan histogram
-                scan << <1, RADIX >> > (d_histogram, d_scanned_histogram);
-
-                // Reorder elements
-                reorder << <gridSize, blockSize >> > (d_input, d_output, d_scanned_histogram, n, bit);
-
-                // Swap input and output pointers
-                int* temp = d_input;
-                d_input = d_output;
-                d_output = temp;
-            }
-
-            // Copy result back to host
-            cudaMemcpy(odata, d_input, n * sizeof(int), cudaMemcpyDeviceToHost);
-
-            // Free device memory
-            cudaFree(d_input);
-            cudaFree(d_output);
-            cudaFree(d_histogram);
-            cudaFree(d_scanned_histogram);
-            cudaFree(d_max_bit);
-
-            timer().endGpuTimer();
+             cudaFree(dev_read);
+             cudaFree(dev_write);
+             cudaFree(dev_label);
+             cudaFree(dev_number);
         }
     }
 }
