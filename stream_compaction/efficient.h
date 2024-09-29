@@ -13,5 +13,9 @@ namespace StreamCompaction {
         void optimizedScan(int n, int* odata, const int* idata, bool calculateTime = true);
 
         int optimizedCompact(int n, int* odata, const int* idata);
+
+        void sharedMemoryOptimizedScan(int n, int* odata, const int* idata, bool calculateTime = true);
+        int sharedMemoryOptimizedCompact(int n, int* odata, const int* idata);
+
     }
 }

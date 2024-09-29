@@ -14,7 +14,7 @@
 #include <stream_compaction/radix.h>
 #include "testing_helpers.hpp"
 
-const int SIZE = 1 << 25; // feel free to change the size of array
+const int SIZE = 1 << 27; // feel free to change the size of array
 const int NPOT = SIZE - 3; // Non-Power-Of-Two
 int *a = new int[SIZE];
 int *b = new int[SIZE];
@@ -98,6 +98,20 @@ int main(int argc, char* argv[]) {
     printCmpResult(NPOT, b, c);
 
     zeroArray(SIZE, c);
+    printDesc("work-efficient scan shared memory optimized, power-of-two");
+    StreamCompaction::Efficient::sharedMemoryOptimizedScan(SIZE, c, a);
+    printElapsedTime(StreamCompaction::Efficient::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
+    //printArray(SIZE, c, true);
+    printCmpResult(SIZE, b, c);
+
+    zeroArray(SIZE, c);
+    printDesc("work-efficient scan shared memory optimized, non-power-of-two");
+    StreamCompaction::Efficient::sharedMemoryOptimizedScan(NPOT, c, a);
+    printElapsedTime(StreamCompaction::Efficient::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
+    //printArray(NPOT, c, true);
+    printCmpResult(NPOT, b, c);
+
+    zeroArray(SIZE, c);
     printDesc("thrust scan, power-of-two");
     StreamCompaction::Thrust::scan(SIZE, c, a);
     printElapsedTime(StreamCompaction::Thrust::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
@@ -164,15 +178,29 @@ int main(int argc, char* argv[]) {
     printCmpLenResult(count, expectedNPOT, b, c);
 
     zeroArray(SIZE, c);
-    printDesc("work-efficient compact, power-of-two");
+    printDesc("work-efficient compact optimized, power-of-two");
     count = StreamCompaction::Efficient::optimizedCompact(SIZE, c, a);
     printElapsedTime(StreamCompaction::Efficient::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
     //printArray(count, c, true);
     printCmpLenResult(count, expectedCount, b, c);
 
     zeroArray(SIZE, c);
-    printDesc("work-efficient compact, non-power-of-two");
+    printDesc("work-efficient compact optimized, non-power-of-two");
     count = StreamCompaction::Efficient::optimizedCompact(NPOT, c, a);
+    printElapsedTime(StreamCompaction::Efficient::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
+    //printArray(count, c, true);
+    printCmpLenResult(count, expectedNPOT, b, c);
+
+    zeroArray(SIZE, c);
+    printDesc("work-efficient compact shared memory optimized, power-of-two");
+    count = StreamCompaction::Efficient::sharedMemoryOptimizedCompact(SIZE, c, a);
+    printElapsedTime(StreamCompaction::Efficient::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
+    //printArray(count, c, true);
+    printCmpLenResult(count, expectedCount, b, c);
+
+    zeroArray(SIZE, c);
+    printDesc("work-efficient compact shared memory optimized, non-power-of-two");
+    count = StreamCompaction::Efficient::sharedMemoryOptimizedCompact(NPOT, c, a);
     printElapsedTime(StreamCompaction::Efficient::timer().getGpuElapsedTimeForPreviousOperation(), "(CUDA Measured)");
     //printArray(count, c, true);
     printCmpLenResult(count, expectedNPOT, b, c);
