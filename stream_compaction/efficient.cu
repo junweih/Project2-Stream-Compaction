@@ -324,7 +324,6 @@ namespace StreamCompaction {
 
 #pragma region sharedOptimized
 
-        template <unsigned int BlockSize>
         __global__ void kernSharedMemScan(int* g_odata, const int* g_idata, int n, int* blockSums) {
             extern __shared__ int temp[];
 
@@ -337,7 +336,7 @@ namespace StreamCompaction {
             __syncthreads();
 
             // Build sum in place up the tree
-            for (int d = BlockSize >> 1; d > 0; d >>= 1) {
+            for (int d = blockSize >> 1; d > 0; d >>= 1) {
                 if (thid < d) {
                     int ai = offset * (2 * thid + 1) - 1;
                     int bi = offset * (2 * thid + 2) - 1;
@@ -349,13 +348,13 @@ namespace StreamCompaction {
 
             // Store the total sum of this block
             if (thid == 0) {
-                blockSums[blockIdx.x] = temp[BlockSize - 1];
-                temp[BlockSize - 1] = 0;
+                blockSums[blockIdx.x] = temp[blockSize - 1];
+                temp[blockSize - 1] = 0;
             }
             __syncthreads();
 
             // Traverse down the tree building the scan in place
-            for (int d = 1; d < BlockSize; d *= 2) {
+            for (int d = 1; d < blockSize; d *= 2) {
                 offset >>= 1;
                 if (thid < d) {
                     int ai = offset * (2 * thid + 1) - 1;
@@ -396,7 +395,7 @@ namespace StreamCompaction {
             }
 
             // Step 1: Perform scan on each block
-            kernSharedMemScan<blockSize> << <numBlocks, blockSize, blockSize * sizeof(int) >> > (
+            kernSharedMemScan << <numBlocks, blockSize, blockSize * sizeof(int) >> > (
                 d_output, d_input, n, d_blockSums);
 
             // Step 2: Scan block sums
