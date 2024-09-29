@@ -5,117 +5,142 @@
 #include <thrust/host_vector.h>
 #include <thrust/scan.h>
 #include "radix.h"
+#include "efficient.h"
 
 namespace StreamCompaction {
-    namespace RadixSort
-    {
+    namespace RadixSort {
         using StreamCompaction::Common::PerformanceTimer;
 
-        PerformanceTimer& timer()
-        {
+        PerformanceTimer& timer() {
             static PerformanceTimer timer;
             return timer;
         }
 
-        __global__ void kernalCheckStop(int n, const int* idata, int* stop)
-        {
-            int index = threadIdx.x + (blockDim.x * blockIdx.x);
-            if (index >= n - 1) return;
+        __global__ void kernMapBitToBoolean(int n, int* dev_idata, int* dev_bitValueArray, int bitPos) {
+            int index = blockIdx.x * blockDim.x + threadIdx.x;
+            if (index >= n) {
+                return;
+            }
 
-            if (idata[index] > idata[index + 1]) (*stop) = 1;
+            int bit = (dev_idata[index] >> bitPos) & 1;
+            dev_bitValueArray[index] = bit == 1 ? 1 : 0;
         }
 
-        __global__ void kernalRadixMapToBoolean(int n, int k, int* label, const int* idata, int* skip) {
-            int index = threadIdx.x + (blockDim.x * blockIdx.x);
-            if (index >= n) return;
+        __global__ void kernComputeComplementBitArray(int n, int* dev_bitValueArray, int* dev_complementBitArray) {
+            int index = blockIdx.x * blockDim.x + threadIdx.x;
+            if (index >= n) {
+                return;
+            }
 
-            int num = idata[index];
-            int result = 1 - ((num & (1 << k)) >> k);
-            if (k == 0 || result != ((num & (1 << (k - 1))) != 0 ? 0 : 1))
-            {
-                *skip = 1;
-            }
-            label[index] = result;
-        }
-        __global__ void kernalRadixScattering(int n, int k, int start, int* odata, const int* idata, const int* label)
-        {
-            int index = threadIdx.x + (blockDim.x * blockIdx.x);
-            if (index >= n) return;
-
-            bool result = ((idata[index] & (1 << k)) != 0 ? 1 : 0);
-            if (result)
-            {
-                odata[start + index - label[index]] = idata[index];
-            }
-            else
-            {
-                odata[label[index]] = idata[index];
-            }
+            dev_complementBitArray[index] = 1 - dev_bitValueArray[index];
         }
 
-         void sort(int n, int* odata, int* idata) {
-             int pot_length = n;// power-of-two length;
+        __global__ void kernComputeOnesTargetPosition(int n, int* dev_complementBitArray, int* dev_prefixSumArray, int* dev_onesTargetPositionArray) {
+            int index = blockIdx.x * blockDim.x + threadIdx.x;
+            if (index >= n) {
+                return;
+            }
 
-             int* dev_read;
-             int* dev_write;
-             int* dev_label;
-             int* dev_number;
+            int totalZeros = dev_complementBitArray[n - 1] + dev_prefixSumArray[n - 1];
+            dev_onesTargetPositionArray[index] = index - dev_prefixSumArray[index] + totalZeros;
+        }
 
-             cudaMalloc((void**)&dev_read, pot_length * sizeof(int));
-             checkCUDAError("cudaMalloc dev_read failed!");
-             cudaMalloc((void**)&dev_write, pot_length * sizeof(int));
-             checkCUDAError("cudaMalloc dev_write failed!");
-             cudaMalloc((void**)&dev_label, pot_length * sizeof(int));
-             checkCUDAError("cudaMalloc dev_label failed!");
-             cudaMalloc((void**)&dev_number, sizeof(int));
-             checkCUDAError("cudaMalloc dev_number failed!");
+        __global__ void kernComputeDestinationIndex(int n, int* dev_bitValueArray, int* dev_prefixSumArray, int* dev_onesTargetPositionArray, int* dev_destinationIndexArray) {
+            int index = blockIdx.x * blockDim.x + threadIdx.x;
+            if (index >= n) {
+                return;
+            }
 
-             cudaMemset(dev_read, (1 << 8) - 1, pot_length * sizeof(int));
-             cudaMemcpy(dev_read, idata, n * sizeof(int), cudaMemcpyHostToDevice);
-             checkCUDAError("Memcpy idata(host) to dev_read(device) failed!");
-             timer().startGpuTimer();
-             for (int i = 0; i < 32; ++i)
-             {
-                 // check whether to stop
-                 cudaMemset(dev_number, 0, sizeof(int));
-                 kernalCheckStop << < (pot_length + blockSize - 1) / blockSize, blockSize >> > (pot_length, dev_read, dev_number);
-                 int stop;
-                 cudaMemcpy(&stop, dev_number, sizeof(int), cudaMemcpyDeviceToHost);
-                 if (stop == 0) break;
+            dev_destinationIndexArray[index] = dev_bitValueArray[index] ? dev_onesTargetPositionArray[index] : dev_prefixSumArray[index];
+        }
 
-                 // label and check whether to skip this bit
-                 cudaMemset(dev_number, 0, sizeof(int));
-                 kernalRadixMapToBoolean << < (pot_length + blockSize - 1) / blockSize, blockSize >> > (pot_length, i, dev_label, dev_read, dev_number);
-                 checkCUDAError("Luanch kernalRadixMapToBoolean failed!");
+        __global__ void kernScatter(int n, int* dev_idata, int* dev_destinationIndexArray, int* dev_odata) {
+            int index = blockIdx.x * blockDim.x + threadIdx.x;
+            if (index >= n) {
+                return;
+            }
 
-                 int skip;
-                 cudaMemcpy(&skip, dev_number, sizeof(int), cudaMemcpyDeviceToHost);
-                 if (skip == 0) continue;
+            dev_odata[dev_destinationIndexArray[index]] = dev_idata[index];
+        }
 
-                 // read the last number of label_1 back
-                 int last_num;
-                 cudaMemcpy(&last_num, dev_label + pot_length - 1, sizeof(int), cudaMemcpyDeviceToHost);
+        void printArray(const char* name, int* arr, int n) {
+            std::cout << name << ": ";
+            for (int i = 0; i < n; ++i) {
+                std::cout << arr[i] << " ";
+            }
+            std::cout << std::endl;
+        }
 
-                 //Efficient::EfficientParallelScan(pot_length, dev_label);
-                 thrust::device_ptr<int> thrust_dev_label(dev_label);
-                 thrust::exclusive_scan(thrust_dev_label, thrust_dev_label + pot_length, dev_label);
+        void sort(int n, int* odata, int* idata) {
 
-                 int start_index;
-                 cudaMemcpy(&start_index, dev_label + pot_length - 1, sizeof(int), cudaMemcpyDeviceToHost);
-                 start_index += last_num;
+            timer().startGpuTimer();
+            int* dev_idata;
+            int* dev_odata;
+            int* dev_bitValueArray;
+            int* dev_complementBitArray;
+            int* dev_prefixSumArray;
+            int* dev_onesTargetPositionArray;
+            int* dev_destinationIndexArray;
 
-                 kernalRadixScattering << < (pot_length + blockSize - 1) / blockSize, blockSize >> > (pot_length, i, start_index, dev_write, dev_read, dev_label);
-                 checkCUDAError("Luanch kernalRadixMapToBoolean failed!");
+            int arrSize = n * sizeof(int);
+            int blockPerGrid = (n + blockSize - 1) / blockSize;
 
-                 std::swap(dev_write, dev_read);
-             }
-             timer().endGpuTimer();
-             cudaMemcpy(odata, dev_read, n * sizeof(int), cudaMemcpyDeviceToHost);
+            cudaMalloc((void**)&dev_idata, arrSize);
+            cudaMalloc((void**)&dev_odata, arrSize);
+            cudaMalloc((void**)&dev_bitValueArray, arrSize);
+            cudaMalloc((void**)&dev_complementBitArray, arrSize);
+            cudaMalloc((void**)&dev_prefixSumArray, arrSize);
+            cudaMalloc((void**)&dev_onesTargetPositionArray, arrSize);
+            cudaMalloc((void**)&dev_destinationIndexArray, arrSize);
 
-             cudaFree(dev_read);
-             cudaFree(dev_write);
-             cudaFree(dev_label);
-             cudaFree(dev_number);
+            cudaMemcpy(dev_idata, idata, arrSize, cudaMemcpyHostToDevice);
+
+            // Temporary arrays for debugging
+            int* temp_complementBitArray = new int[n];
+            int* temp_prefixSumArray = new int[n];
+
+            for (int bitPos = 0; bitPos < 32; bitPos++) {
+                // 1. Get bitValueArray
+                kernMapBitToBoolean << <blockPerGrid, blockSize >> > (n, dev_idata, dev_bitValueArray, bitPos);
+
+                // 2. Get complementBitArray
+                kernComputeComplementBitArray << <blockPerGrid, blockSize >> > (n, dev_bitValueArray, dev_complementBitArray);
+                cudaMemcpy(temp_complementBitArray, dev_complementBitArray, arrSize, cudaMemcpyDeviceToHost);
+
+                // 3. Compute prefix sum using optimized scan
+                Efficient::optimizedScan(n, temp_prefixSumArray, temp_complementBitArray, false);
+                cudaMemcpy(dev_prefixSumArray, temp_prefixSumArray, arrSize, cudaMemcpyHostToDevice);
+
+                // 4 & 5. Compute onesTargetPositionArray
+                kernComputeOnesTargetPosition << <blockPerGrid, blockSize >> > (n, dev_complementBitArray, dev_prefixSumArray, dev_onesTargetPositionArray);
+
+                // 6. Compute destinationIndexArray
+                kernComputeDestinationIndex << <blockPerGrid, blockSize >> > (n, dev_bitValueArray, dev_prefixSumArray, dev_onesTargetPositionArray, dev_destinationIndexArray);
+
+                // 7. Scatter elements to output array
+                kernScatter << <blockPerGrid, blockSize >> > (n, dev_idata, dev_destinationIndexArray, dev_odata);
+
+                // Swap input and output for next iteration
+                std::swap(dev_idata, dev_odata);
+            }
+
+            // Copy result back to host
+            cudaMemcpy(odata, dev_idata, arrSize, cudaMemcpyDeviceToHost);
+
+            // Free device memory
+            cudaFree(dev_idata);
+            cudaFree(dev_odata);
+            cudaFree(dev_bitValueArray);
+            cudaFree(dev_complementBitArray);
+            cudaFree(dev_prefixSumArray);
+            cudaFree(dev_onesTargetPositionArray);
+            cudaFree(dev_destinationIndexArray);
+
+            // Free temporary arrays
+            delete[] temp_complementBitArray;
+            delete[] temp_prefixSumArray;
+
+            timer().endGpuTimer();
         }
     }
 }

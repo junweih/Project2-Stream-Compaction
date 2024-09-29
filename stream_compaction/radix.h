@@ -8,6 +8,5 @@ namespace StreamCompaction {
 
         void sort(int n, int* odata, int* idata);
 
-        int getMaxBit(int* idata, int n);
     }
 }
