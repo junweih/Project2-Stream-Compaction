@@ -95,21 +95,20 @@ namespace StreamCompaction {
 
             cudaMemcpy(dev_idata, idata, arrSize, cudaMemcpyHostToDevice);
 
-            // Temporary arrays for debugging
-            int* temp_complementBitArray = new int[n];
-            int* temp_prefixSumArray = new int[n];
+            int* host_complementBitArray = new int[n];
+            int* host_prefixSumArray = new int[n];
 
-            for (int bitPos = 0; bitPos < 32; bitPos++) {
+            for (int bitPos = 0; bitPos < 31; bitPos++) {
                 // 1. Get bitValueArray
                 kernMapBitToBoolean << <blockPerGrid, blockSize >> > (n, dev_idata, dev_bitValueArray, bitPos);
 
                 // 2. Get complementBitArray
                 kernComputeComplementBitArray << <blockPerGrid, blockSize >> > (n, dev_bitValueArray, dev_complementBitArray);
-                cudaMemcpy(temp_complementBitArray, dev_complementBitArray, arrSize, cudaMemcpyDeviceToHost);
+                cudaMemcpy(host_complementBitArray, dev_complementBitArray, arrSize, cudaMemcpyDeviceToHost);
 
                 // 3. Compute prefix sum using optimized scan
-                Efficient::optimizedScan(n, temp_prefixSumArray, temp_complementBitArray, false);
-                cudaMemcpy(dev_prefixSumArray, temp_prefixSumArray, arrSize, cudaMemcpyHostToDevice);
+                Efficient::optimizedScan(n, host_prefixSumArray, host_complementBitArray, false);
+                cudaMemcpy(dev_prefixSumArray, host_prefixSumArray, arrSize, cudaMemcpyHostToDevice);
 
                 // 4 & 5. Compute onesTargetPositionArray
                 kernComputeOnesTargetPosition << <blockPerGrid, blockSize >> > (n, dev_complementBitArray, dev_prefixSumArray, dev_onesTargetPositionArray);
@@ -137,8 +136,8 @@ namespace StreamCompaction {
             cudaFree(dev_destinationIndexArray);
 
             // Free temporary arrays
-            delete[] temp_complementBitArray;
-            delete[] temp_prefixSumArray;
+            delete[] host_complementBitArray;
+            delete[] host_prefixSumArray;
 
             timer().endGpuTimer();
         }
