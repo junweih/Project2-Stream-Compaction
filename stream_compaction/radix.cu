@@ -73,7 +73,6 @@ namespace StreamCompaction {
 
         void sort(int n, int* odata, int* idata) {
 
-            timer().startGpuTimer();
             int* dev_idata;
             int* dev_odata;
             int* dev_bitValueArray;
@@ -94,6 +93,9 @@ namespace StreamCompaction {
             cudaMalloc((void**)&dev_destinationIndexArray, arrSize);
 
             cudaMemcpy(dev_idata, idata, arrSize, cudaMemcpyHostToDevice);
+
+
+            timer().startGpuTimer();
 
             int* host_complementBitArray = new int[n];
             int* host_prefixSumArray = new int[n];
@@ -123,6 +125,8 @@ namespace StreamCompaction {
                 std::swap(dev_idata, dev_odata);
             }
 
+
+            timer().endGpuTimer();
             // Copy result back to host
             cudaMemcpy(odata, dev_idata, arrSize, cudaMemcpyDeviceToHost);
 
@@ -139,7 +143,6 @@ namespace StreamCompaction {
             delete[] host_complementBitArray;
             delete[] host_prefixSumArray;
 
-            timer().endGpuTimer();
         }
     }
 }

@@ -53,10 +53,7 @@ namespace StreamCompaction {
          * Performs prefix-sum (aka scan) on idata, storing the result into odata.
          */
         void scan(int n, int* odata, const int* idata, bool calculateTime /*= true*/) {
-            if (calculateTime)
-            {
-                timer().startGpuTimer();
-            }
+
 
             int* dev_buf;
             int power2 = ilog2ceil(n);
@@ -79,7 +76,10 @@ namespace StreamCompaction {
             }
 
 
-
+            if (calculateTime)
+            {
+                timer().startGpuTimer();
+            }
             // Up-sweep phase
             for (int d = 0; d < power2 - 1; d++)
             {
@@ -96,6 +96,10 @@ namespace StreamCompaction {
                 cudaDeviceSynchronize();
             }
 
+            if (calculateTime)
+            {
+                timer().endGpuTimer();
+            }
 
 
             // Copy result back to host
@@ -104,10 +108,7 @@ namespace StreamCompaction {
             // Free device memory
             cudaFree(dev_buf);
 
-            if (calculateTime)
-            {
-                timer().endGpuTimer();
-            }
+
         }
 
         /**
@@ -120,7 +121,7 @@ namespace StreamCompaction {
          * @returns      The number of elements remaining after compaction.
          */
         int compact(int n, int* odata, const int* idata) {
-            timer().startGpuTimer();
+
             int* dev_bools;
             int* dev_idata;
             int* dev_odata;
@@ -140,6 +141,8 @@ namespace StreamCompaction {
 
             // Copy input data to device
             cudaMemcpy(dev_idata, idata, n * sizeof(int), cudaMemcpyHostToDevice);
+
+            timer().startGpuTimer();
 
             // Step 1: map
             Common::kernMapToBoolean << < blockPerGrid, blockSize >> > (n, dev_bools, dev_idata);
@@ -205,10 +208,7 @@ namespace StreamCompaction {
         }
 
         void optimizedScan(int n, int* odata, const int* idata, bool calculateTime/* = true*/) {
-            if (calculateTime)
-            {
-                timer().startGpuTimer();
-            }
+
 
             int* dev_buf;
             int power2 = ilog2ceil(n);
@@ -226,6 +226,11 @@ namespace StreamCompaction {
                 cudaMemset(dev_buf + n, 0, (chunk - n) * sizeof(int));
             }
 
+            if (calculateTime)
+            {
+                timer().startGpuTimer();
+            }
+
             // Up-sweep phase
             for (int d = 0; d < power2; d++)
             {
@@ -237,6 +242,8 @@ namespace StreamCompaction {
 
             cudaMemset(dev_buf + chunk - 1, 0, sizeof(int)); // set root to zero
 
+
+
             // Down-sweep phase
             for (int d = power2 - 1; d >= 0; d--)
             {
@@ -246,21 +253,22 @@ namespace StreamCompaction {
                 cudaDeviceSynchronize();
             }
 
+            if (calculateTime)
+            {
+                timer().endGpuTimer();
+            }
+
             // Copy result back to host
             cudaMemcpy(odata, dev_buf, n * sizeof(int), cudaMemcpyDeviceToHost);
 
             // Free device memory
             cudaFree(dev_buf);
 
-            if (calculateTime)
-            {
-                timer().endGpuTimer();
-            }
         }
 
         // You can add a new optimized compact function here if needed
         int optimizedCompact(int n, int* odata, const int* idata) {
-            timer().startGpuTimer();
+
             int* dev_bools;
             int* dev_idata;
             int* dev_odata;
@@ -280,6 +288,8 @@ namespace StreamCompaction {
 
             // Copy input data to device
             cudaMemcpy(dev_idata, idata, arrSize, cudaMemcpyHostToDevice);
+
+            timer().startGpuTimer();
 
             // Step 1: map
             Common::kernMapToBoolean << <blockPerGrid, blockSize >> > (n, dev_bools, dev_idata);
