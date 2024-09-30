@@ -242,8 +242,6 @@ For each digit, the sorting process utilizes a parallel scan operation. Here's h
 
 ## Results
 
-------
-
 Test case configuration: blockSize = 256, array size = **2^27 (134,217,728)**
 
 ```
@@ -347,9 +345,7 @@ Test case configuration: blockSize = 256, array size = **2^27 (134,217,728)**
 
 ## Performance Analysis
 
-------
-
-#### 1. 3. All GPU Scan (Naive, Work-Efficient, Work-Efficient Optimized, Work-Efficient Shared Memory and Thrust) vs serial CPU Scan Comparison
+### 1.  All GPU Scan (Naive, Work-Efficient, Work-Efficient Optimized, Work-Efficient Shared Memory and Thrust) vs serial CPU Scan Comparison
 
 Test case configuration: block size: 256. array size: [2^20, 2^30]
 
@@ -367,7 +363,7 @@ Test case configuration: block size: 256. array size: [2^20, 2^30]
 
 
 
-###### **Large Arrays (2^30 elements)**
+#### **Large Arrays (2^30 elements)**
 
 Performance order (fastest to slowest):
 
@@ -378,7 +374,7 @@ Performance order (fastest to slowest):
 5. GPU Naive Scan
 6. CPU Scan
 
-###### Explanation:
+#### Explanation:
 
 1. Thrust:
    - Thrust is a highly optimized CUDA library that leverages advanced GPU optimization techniques.
@@ -401,7 +397,7 @@ Performance order (fastest to slowest):
    - The CPU version is a simple sequential implementation.
    - For large arrays, it cannot compete with parallel GPU implementations due to limited parallelism.
 
-###### Small Arrays (2^20 elements)
+#### Small Arrays (2^20 elements)
 
 Performance order (fastest to slowest):
 
@@ -412,7 +408,7 @@ Performance order (fastest to slowest):
 5. GPU Optimized Efficient Scan
 6. GPU Efficient Scan
 
-###### Explanation:
+#### Explanation:
 
 1. GPU Shared Memory Efficient Scan:
    - For smaller arrays, this method benefits from reduced kernel launch overhead and efficient use of shared memory.
@@ -430,11 +426,11 @@ Performance order (fastest to slowest):
    - These methods, while efficient for large arrays, may have more overhead than simpler methods for smaller datasets.
    - The complexity of these algorithms doesn't pay off for smaller arrays where simpler methods can be more direct and effective.
 
-###### Conclusion
+#### Conclusion
 
 The performance characteristics demonstrate that the most suitable algorithm depends on the size of the input data. For very large datasets, highly optimized GPU methods like Thrust and shared memory implementations excel. For smaller datasets, simpler GPU methods or even CPU implementations can be competitive due to reduced overhead and better cache utilization. The choice of algorithm should be based on the expected size of the input data and the specific hardware available.
 
-##### 2. Block size optimization for minimal runtime
+### 2. Block size optimization for minimal runtime
 
 Test case configuration: power-of-two array size = **2^27 (134,217,728)**
 
