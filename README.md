@@ -218,3 +218,24 @@ This step ensures that the scan is correct across block boundaries.
 - Parallel processing within blocks
 - Efficient handling of large arrays through block-level processing
 
+### 6. **GPU Parallel Radix Sort Algorithm**
+
+#### Step 1. Sort on each digit, right to left
+
+In this step, the algorithm processes each digit of the numbers, starting from the least significant digit (rightmost) and moving towards the most significant digit (leftmost).
+
+![](img\sortdigit.png)
+For each digit:
+
+Extract the digit from each number.
+Group numbers based on the value of this digit (0-9 for decimal, 0-1 for binary, etc.).
+Maintain the relative order of numbers within each group.
+
+####  Step 2. For each digit, sort using Scan
+For each digit, the sorting process utilizes a parallel scan operation. Here's how it works:
+
+Create a Bit Array: For each possible value of the digit (e.g., 0 and 1 for binary), create a bit array where 1 indicates the presence of that digit value at a position, and 0 indicates its absence.
+Perform Scan: Use the shared-memory optimized scan algorithm on these bit arrays. This step computes the prefix sum, which effectively determines the output position for each element.
+Scatter Elements: Based on the scan results, scatter the elements to their new positions in the output array.
+
+![radixDigitSort](img\radixDigitSort.jpg)
