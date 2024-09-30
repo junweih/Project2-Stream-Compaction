@@ -34,11 +34,11 @@ This project implements a suite of GPU-accelerated algorithms for stream compact
 
 Use a for loop to compute an exclusive prefix sum.
 
-![cpu_scan](\img\cpu_scan.png)
+![cpu_scan](/img/cpu_scan.png)
 
 ### 2. **Naive GPU Scan**
 
-Use double-buffer to scan two array. First do exclusive scan, then do shift right to get inclusive scan array.![figure-39-2](\img\figure-39-2.jpg)
+Use double-buffer to scan two array. First do exclusive scan, then do shift right to get inclusive scan array.![figure-39-2](/img/figure-39-2.jpg)
 
 Naïve Parallel Scan needs O(log2(n)) passes. Each pass is O(n) in terms of total work, though in practice it can be less due to factors like early warp retirement on GPUs. The overall work complexity is O(n log2(n)).
 
@@ -58,7 +58,7 @@ Then we traverse back down the tree from the root, using the partial sums from t
 
 ### 4. **Work-Efficient Optimized GPU Scan Algorithm**
 
-#### 4.**1. Thread Utilization **
+#### 4.1. Thread Utilization 
 
 Original:
 
@@ -224,7 +224,7 @@ This step ensures that the scan is correct across block boundaries.
 
 In this step, the algorithm processes each digit of the numbers, starting from the least significant digit (rightmost) and moving towards the most significant digit (leftmost).
 
-![](img\sortdigit.png)
+![](/img/sortdigit.png)
 For each digit:
 
 Extract the digit from each number.
@@ -234,7 +234,7 @@ Maintain the relative order of numbers within each group.
 ####  Step 2. For each digit, sort using Scan
 For each digit, the sorting process utilizes a parallel scan operation. Here's how it works:
 
-![radixDigitSort](img\radixDigitSort.jpg)
+![radixDigitSort](/img/radixDigitSort.jpg)
 
 1. Create a Bit Array: For each possible value of the digit (e.g., 0 and 1 for binary), create a bit array where 1 indicates the presence of that digit value at a position, and 0 indicates its absence.
 2. Perform Scan: Use the shared-memory optimized scan algorithm on these bit arrays. This step computes the prefix sum, which effectively determines the output position for each element.
@@ -355,7 +355,7 @@ Test case configuration: blockSize = 256, array size = **2^27 (134,217,728)**
 
 Test case configuration: block size: 256. array size: [2^20, 2^30]
 
-![Runtime vs. Array Size for CPU and GPU Scan Algorithms](img\Runtime vs. Array Size for CPU and GPU Scan Algorithms.png)
+![Runtime vs. Array Size for CPU and GPU Scan Algorithms](/img/Runtime vs. Array Size for CPU and GPU Scan Algorithms.png)
 
 *Figure 1: Runtime vs Array Size for CPU and GPU Efficient Scan*
 
@@ -440,7 +440,7 @@ The performance characteristics demonstrate that the most suitable algorithm dep
 
 Test case configuration: power-of-two array size = **2^27 (134,217,728)**
 
-![Block size optimization for minimal runtime](\img\Block size optimization for minimal runtime.png)
+![Block size optimization for minimal runtime](/img/Block size optimization for minimal runtime.png)
 
 | Block Size | GPU Naive Scan | GPU Efficient Scan | GPU Optimized Efficient Scan | GPU Shared Memory Efficient Scan | Thrust Scan |
 | :--------: | :------------: | :----------------: | :--------------------------: | :------------------------------: | :---------: |
