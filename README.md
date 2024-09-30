@@ -7,7 +7,6 @@ CUDA Stream Compaction
 * Tested on: Windows 10, i7-13790F @ 5.20 GHz 32GB, RTX 4080 16GB
 
 ## Overview
-------
 
 This project implements a suite of GPU-accelerated algorithms for stream compaction, scan operations, and sorting. The main features include:
 
@@ -28,7 +27,6 @@ This project implements a suite of GPU-accelerated algorithms for stream compact
 
 ## Description
 
-------
 
 ### 1. **CPU Scan**
 
