@@ -4,7 +4,9 @@ CUDA Stream Compaction
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 2**
 
 * Junwei Huang
+
 * Tested on: Windows 10, i7-13790F @ 5.20 GHz 32GB, RTX 4080 16GB
+
 
 ## Overview
 
@@ -23,38 +25,38 @@ This project implements a suite of GPU-accelerated algorithms for stream compact
 6. **Radix Sort GPU Parallel Algorithm**
    - Implements a parallel radix sort algorithm leveraging GPU capabilities.
 
-
+[TOC]
 
 ## Description
 
 
-### 1. **CPU Scan**
+### 1. CPU Scan
 
 Use a for loop to compute an exclusive prefix sum.
 
 ![cpu_scan](/img/cpu_scan.png)
 
-### 2. **Naive GPU Scan**
+### 2. Naive GPU Scan
 
 Use double-buffer to scan two array. First do exclusive scan, then do shift right to get inclusive scan array.![figure-39-2](/img/figure-39-2.jpg)
 
 Naïve Parallel Scan needs O(log2(n)) passes. Each pass is O(n) in terms of total work, though in practice it can be less due to factors like early warp retirement on GPUs. The overall work complexity is O(n log2(n)).
 
-### 3. **Work-Efficient GPU Scan**
+### 3. Work-Efficient GPU Scan
 
-#### **Step 1: Up-Sweep Phase**
+#### Step 1: Up-Sweep Phase
 
 We first traverse the tree from leaves to the root computing partial sums at internal nodes of the tree.
 
 ![img](/img/upsweep.png)
 
-#### **Step 2: Down-Sweep Phase**
+#### Step 2: Down-Sweep Phase
 
 Then we traverse back down the tree from the root, using the partial sums from the reduce phase to build the scan in place on the array. We start by inserting zero at the root of the tree, and on each step, each node at the current level passes its own value to its left child, and the sum of its value and the former value of its left child to its right child.
 
 ![img](/img/downsweep.png)
 
-### 4. **Work-Efficient Optimized GPU Scan Algorithm**
+### 4. Work-Efficient Optimized GPU Scan Algorithm
 
 #### 4.1. Thread Utilization 
 
@@ -82,7 +84,7 @@ Explanation:
 
 
 
-#### 4.**2. Kernel Indexing**
+#### 4.2. Kernel Indexing
 
 Original:
 ```cpp
@@ -110,7 +112,7 @@ Explanation:
 - This new approach ensures that only the necessary threads are doing work at each level.
 - It also compacts the active threads, improving memory access patterns.
 
-#### **4.3. Early Termination**
+#### 4.3. Early Termination
 
 Original:
 ```cpp
@@ -133,7 +135,7 @@ Explanation:
 - The optimized version checks if the thread should be active at the current level.
 - This allows for early termination of unnecessary threads, reducing wasted work.
 
-#### **4.4. Memory Access Pattern**
+#### 4.4. Memory Access Pattern
 
 Original:
 ```cpp
@@ -216,7 +218,7 @@ This step ensures that the scan is correct across block boundaries.
 - Parallel processing within blocks
 - Efficient handling of large arrays through block-level processing
 
-### 6. **GPU Parallel Radix Sort Algorithm**
+### 6. GPU Parallel Radix Sort Algorithm
 
 #### Step 1. Sort on each digit, right to left
 
@@ -363,7 +365,7 @@ Test case configuration: block size: 256. array size: [2^20, 2^30]
 
 
 
-#### **Large Arrays (2^30 elements)**
+#### Large Arrays (2^30 elements)
 
 Performance order (fastest to slowest):
 
@@ -374,7 +376,7 @@ Performance order (fastest to slowest):
 5. GPU Naive Scan
 6. CPU Scan
 
-#### Explanation:
+##### Explanation
 
 1. Thrust:
    - Thrust is a highly optimized CUDA library that leverages advanced GPU optimization techniques.
@@ -408,7 +410,7 @@ Performance order (fastest to slowest):
 5. GPU Optimized Efficient Scan
 6. GPU Efficient Scan
 
-#### Explanation:
+##### Explanation
 
 1. GPU Shared Memory Efficient Scan:
    - For smaller arrays, this method benefits from reduced kernel launch overhead and efficient use of shared memory.
