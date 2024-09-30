@@ -349,7 +349,7 @@ Test case configuration: blockSize = 256, array size = **2^27 (134,217,728)**
 
 Test case configuration: block size: 256. array size: [2^20, 2^30]
 
-![Runtime vs. Array Size for CPU and GPU Scan Algorithms](/img/Runtime vs. Array Size for CPU and GPU Scan Algorithms.png)
+![Runtime vs. Array Size for CPU and GPU Scan Algorithms](/img/Runtime_vs._Array_Size_for_CPU_and_GPU_Scan_Algorithms.png)
 
 *Figure 1: Runtime vs Array Size for CPU and GPU Efficient Scan*
 
@@ -434,7 +434,7 @@ The performance characteristics demonstrate that the most suitable algorithm dep
 
 Test case configuration: power-of-two array size = **2^27 (134,217,728)**
 
-![Block size optimization for minimal runtime](/img/Block size optimization for minimal runtime.png)
+![Block size optimization for minimal runtime](/img/Block_size_optimization_for_minimal_runtime.png)
 
 | Block Size | GPU Naive Scan | GPU Efficient Scan | GPU Optimized Efficient Scan | GPU Shared Memory Efficient Scan | Thrust Scan |
 | :--------: | :------------: | :----------------: | :--------------------------: | :------------------------------: | :---------: |
